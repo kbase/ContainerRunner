@@ -21,6 +21,7 @@ import yaml
 import unittest
 import re
 import logging
+import xmlrunner
 from docker import client
 
 
@@ -31,7 +32,8 @@ conf = {'docker_url': 'unix://var/run/docker.sock',
         'poll_interval': 5,
         'run_env': 'ci',
         'debug': False,
-        'max_running_tasks': 1
+        'max_running_tasks': 1,
+        'delete_failed': True
         }
 
 # Default yaml config file path
@@ -179,7 +181,8 @@ def MakeTestFunction(task_name, task, containerId):
             if test_type == "str_match":
                 status = status and (output.find(param) >= 0)
         self.assertTrue(status, msg="container output: {}".format(output[0:80]))
-        cli.remove_container(containerId)
+        if status is True or conf['delete_failed']:
+            cli.remove_container(containerId)
 
     return TestTaskOutput
 
@@ -218,7 +221,7 @@ def main():
             entrypoint = task.get('entrypoint', conf['entrypoint'])
             env = {'KB_AUTH_TOKEN': task.get('KB_AUTH_TOKEN', conf.get('KB_AUTH_TOKEN')),
                    'KB_WORKSPACE_ID': task.get('KB_WORKSPACE_ID', conf.get('KB_WORKSPACE_ID')),
-                   'environ': task.get('run_env', conf.get('run_env'))}
+                   'ENVIRON': task.get('run_env', conf.get('run_env'))}
             logging.info("Running task {0}".format(task_name))
             cid = StartContainer(image, task['command'], entrypoint, env)
             logging.info("Started container {0}".format(cid))
@@ -229,7 +232,10 @@ def main():
         for cid in fin:
             running_tasks.remove(cid)
             logging.info("Container {0} exited".format(cid))
-    unittest.main(verbosity=2)
+    if 'xml_output' in conf:
+        unittest.main(testRunner=xmlrunner.XMLTestRunner(output=conf['xml_output']))
+    else:
+        unittest.main()
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
