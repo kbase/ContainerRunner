@@ -20,6 +20,7 @@ import signal
 import yaml
 import unittest
 import re
+import logging
 from docker import client
 
 
@@ -63,6 +64,8 @@ def StartContainer(image, command, entry, env):
     Returns the container ID or else re-raises the error that the docker API throws.
     """
 
+    logging.debug("Creating image:{0} entrypoint:{1} command: '{2}' environment: {3}".format(image,
+                  command, entry, env))
     container = cli.create_container(image=image,
                                      command=command,
                                      entrypoint=entry,
@@ -108,8 +111,7 @@ def RemoveContainers(containerIds):
     of the list of containers created by this module
     """
     for containerId in containerIds:
-        if conf['debug']:
-            print "Removing container {}".format(containerId)
+        logging.info("Removing container {}".format(containerId))
         cli.remove_container(containerId)
         container_list.remove(containerId)
 
@@ -176,7 +178,7 @@ def MakeTestFunction(task_name, task, containerId):
         for test_type, param in task['tests'].iteritems():
             if test_type == "str_match":
                 status = status and (output.find(param) >= 0)
-        self.assertTrue(status)
+        self.assertTrue(status, msg="container output: {}".format(output[0:80]))
         cli.remove_container(containerId)
 
     return TestTaskOutput
@@ -187,9 +189,16 @@ def main():
     with open(config_path, 'r') as f:
         conf2 = yaml.load(f)
     conf.update(conf2)
+
+    # Set the logging loglevel based on the "loglevel" setting in the yaml file
+    if 'loglevel' in conf:
+        numeric_level = getattr(logging, conf['loglevel'].upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError('Invalid log level: %s' % conf['loglevel'])
+        logging.basicConfig(level=numeric_level)
+
     cli = client.Client(base_url=conf['docker_url'])
-    env = {'KB_AUTH_TOKEN': conf['KB_AUTH_TOKEN'],
-           'KB_WORKSPACE_ID': conf['KB_WORKSPACE_ID']}
+
     # verify that all task_names are alphanumeric+_ and can
     # be used in a function name
     legit_name = re.compile('^\w+$')
@@ -207,20 +216,20 @@ def main():
             task = conf['tasks'][task_name]
             image = task.get('image', conf['image'])
             entrypoint = task.get('entrypoint', conf['entrypoint'])
-            if conf['debug']:
-                print "Running task {0}".format(task_name)
+            env = {'KB_AUTH_TOKEN': task.get('KB_AUTH_TOKEN', conf.get('KB_AUTH_TOKEN')),
+                   'KB_WORKSPACE_ID': task.get('KB_WORKSPACE_ID', conf.get('KB_WORKSPACE_ID')),
+                   'environ': task.get('run_env', conf.get('run_env'))}
+            logging.info("Running task {0}".format(task_name))
             cid = StartContainer(image, task['command'], entrypoint, env)
-            if conf['debug']:
-                print "Started container {0}".format(cid)
+            logging.info("Started container {0}".format(cid))
             running_tasks.append(cid)
             test_func = MakeTestFunction(task_name, task, cid)
             setattr(NarrativeTestContainer, 'test_{0}_task'.format(task_name), test_func)
         fin = WaitUntilStopped(running_tasks)
         for cid in fin:
             running_tasks.remove(cid)
-            if conf['debug']:
-                print "Container {0} exited".format(cid)
-    unittest.main()
+            logging.info("Container {0} exited".format(cid))
+    unittest.main(verbosity=2)
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
