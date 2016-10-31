@@ -1,0 +1,42 @@
+KB_AUTH_TOKEN : blahblah
+KB_WORKSPACE_ID : blah_workspace
+max_running_tasks : 3
+debug: True
+tasks :
+    hello_world:
+        command: "hello world"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: hello
+    goodbye:
+        command: "goodbye cruel world"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: "goodbye"
+    goodbye2:
+        command: "goodbye cruel world"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: "cruel world"
+    hello_world2:
+        command: "Hello cruel world!"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: "cruel world"
+    stop_dave:
+        command: "Will you stop, Dave?"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: "stop"
+    malfunction:
+        command: "goodbye cruel world"
+        image : ubuntu:latest
+        entrypoint : /bin/bash
+        tests:
+            str_match: "No such file"
+            exit_code: 127
