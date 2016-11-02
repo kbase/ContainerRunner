@@ -15,6 +15,7 @@ Author: Steve Chan sychan@lbl.gov
 '''
 
 import sys
+import os
 import time
 import signal
 import yaml
@@ -31,13 +32,13 @@ conf = {'docker_url': 'unix://var/run/docker.sock',
         'entrypoint': 'headless-narrative',
         'poll_interval': 5,
         'run_env': 'ci',
-        'debug': False,
-        'max_running_tasks': 1,
-        'delete_failed': True
+        'max_running_tasks': 3,
+        'delete_failed': True,
+        'kill_on_timeout': False
         }
 
 # Default yaml config file path
-config_path = "narrative_runner.yaml"
+config_path = os.environ.get("NARRATIVE_RUNNER_CONFIG", "narrative_runner.yaml")
 
 # prefix to be used on containernames to avoid name collision
 cname_prefix = time.strftime("%m%d_%H%M%S")
@@ -51,14 +52,6 @@ class IllegalTaskName(Exception):
     """
     Task names in the config file must be alphanumeric or _ only, so that
     the task name can be made into a descriptive functional name
-    """
-    pass
-
-
-class ContainerBadExitCode(Exception):
-    """
-    Exception raised when the exit code of the program in the container
-    is non-Zero
     """
     pass
 
@@ -105,13 +98,10 @@ class NarrativeTestContainer(unittest.TestCase):
                 logging.debug("Creating image:{0} entrypoint:{1} command: '{2}' env: {3}".format(
                                 image, entrypoint, task['command'], env))
                 con_name = ConName(task_name)
-                container = cls.cli.create_container(image=image,
-                                                     command=task['command'],
-                                                     entrypoint=entrypoint,
-                                                     environment=env,
-                                                     name=con_name)
+                cls.cli.create_container(image=image, command=task['command'],
+                                         entrypoint=entrypoint, environment=env, name=con_name)
                 cls.container_list.append(con_name)
-                cls.cli.start(container['Id'])
+                cls.cli.start(con_name)
                 logging.info("Started container {0}".format(con_name))
                 running_tasks.append(con_name)
             finished = []
@@ -128,8 +118,13 @@ class NarrativeTestContainer(unittest.TestCase):
                     if len(finished) == 0:
                         time.sleep(conf['poll_interval'])
             except TimeoutException:
-                # TODO Need to decide what to do on timeout - kill the the containers?
-                pass
+                logging.info("Timeout triggered while waiting for containers: " +
+                             ",".join(running_tasks))
+                if conf['kill_on_timeout'] is True:
+                    for containerId in running_tasks:
+                        logging.info("Stopping container {}".format(containerId))
+                        cls.cli.stop(containerId)
+                    time.sleep(10)  # docker waits 10 seconds before sending SIGKILL to container
             except Exception as e:
                 raise e
             for cid in finished:
@@ -160,16 +155,19 @@ def MakeTestFunction(task_name, task, containerId):
 
     def TestTaskOutput(self):
         """
-        Check the output of the container in cid against the test criteria in task
-        and return (status,output) as a boolean as to whether the tests pass and
-        output as the return from the container
+        Check the output of the container in containerId against the task['test']'
+        criteria with assertions. If there are no tests associated with the task
+        then the only check that applies is that exit code was 0
         """
         state = self.cli.inspect_container(containerId)
         exit_code = state['State']['ExitCode']
+        if exit_code == 137:
+            self.fail('Task was killed')
+            # TODO Perhaps include how long the container ran before being killed?
         self.assertEquals(exit_code, task.get('tests', {}).get('exit_code', 0))
         status = True
         output = self.cli.logs(containerId)
-        for test_type, param in task.get('tests', []).iteritems():
+        for test_type, param in task.get('tests', {}).iteritems():
             if test_type == "str_match":
                 status = status and (output.find(param) >= 0)
         self.assertTrue(status, msg="container output: {}".format(output[0:80]))
