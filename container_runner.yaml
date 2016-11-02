@@ -1,0 +1,38 @@
+max_running_tasks : 6
+xml_output: xml_reports
+# loglevel: info
+delete_failed: True
+timeout: 60
+kill_on_timeout: True
+tasks :
+    hello_world:
+        command: "hello world"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: hello
+    goodbye:
+        command: "goodbye cruel world"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            str_match: "goodbye"
+    goodbye2:
+        command: "goodbye cruel world"
+        image : ubuntu:latest
+        entrypoint : /bin/bash
+        tests:
+            str_match: "goodbye"
+            exit_code: 127
+    stop_dave:
+        command: "Will you stop, Dave?"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            regex_match: "^Will.*Dave"
+#not_tasks:
+    timeout:
+        command: "90"
+        image : ubuntu:latest
+        entrypoint : /bin/sleep
+
