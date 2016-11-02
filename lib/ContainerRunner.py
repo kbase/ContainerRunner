@@ -1,8 +1,7 @@
 '''
-
 Script that runs a series of docker containers as a integration tests.
 Input:
-    A narrative_runner.yaml is used to configure the environment that should be used, including
+    A container_runner.yaml is used to configure the environment that should be used, including
     things like the workspace to run out of, authentication information, and the environment 'prod',
     'appdev','next', the particular docker containers to Run, how many to run at a time, etc...
 
@@ -11,7 +10,6 @@ Output:
     return. So that the output can be consumed by any tool that parses unittest output
 
 Author: Steve Chan sychan@lbl.gov
-
 '''
 
 import sys
@@ -34,17 +32,18 @@ conf = {'docker_url': 'unix://var/run/docker.sock',
         'run_env': 'ci',
         'max_running_tasks': 3,
         'delete_failed': True,
-        'kill_on_timeout': False
+        'kill_on_timeout': True
         }
 
 # Default yaml config file path
-config_path = os.environ.get("NARRATIVE_RUNNER_CONFIG", "narrative_runner.yaml")
+config_path = os.environ.get("CONTAINER_RUNNER_CONFIG", "container_runner.yaml")
 
 # prefix to be used on containernames to avoid name collision
 cname_prefix = time.strftime("%m%d_%H%M%S")
 
 
 class TimeoutException(Exception):
+    """ Thrown if a container takes too long to run """
     pass
 
 
@@ -56,14 +55,17 @@ class IllegalTaskName(Exception):
     pass
 
 
+class UnknownTestCondition(Exception):
+    """ Thrown if we come across a test condition in the YAML file that isn't recognized """
+    pass
+
+
 def TimeoutHandler(signum, frame):
-    """
-    Sig Alarm handler function that raises a TimeoutException
-    """
+    """ Sig Alarm handler function that raises a TimeoutException """
     raise TimeoutException()
 
 
-class NarrativeTestContainer(unittest.TestCase):
+class ContainerTestContainer(unittest.TestCase):
     """
     Class that serves as a container for tests generated at runtime from
     YAML description file.
@@ -79,10 +81,11 @@ class NarrativeTestContainer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """
-        Simply all the test containers in parallel so that the actual test methods are simply
-        checking the output
+        Run the test containers in parallel at setup, so that the actual test methods are just
+        checking the output. If timeout is set and killing container on timeout is enabled, then
+        kill the containers, otherwise just log the timeout and keep waiting.
         """
-        super(NarrativeTestContainer, cls).setUpClass()
+        super(ContainerTestContainer, cls).setUpClass()
         cls.cli = client.Client(base_url=conf['docker_url'])
         task_queue = conf['tasks'].keys()
         running_tasks = []
@@ -122,7 +125,7 @@ class NarrativeTestContainer(unittest.TestCase):
                              ",".join(running_tasks))
                 if conf['kill_on_timeout'] is True:
                     for containerId in running_tasks:
-                        logging.info("Stopping container {}".format(containerId))
+                        logging.warning("Stopping container due to timeout: {}".format(containerId))
                         cls.cli.stop(containerId)
                     time.sleep(10)  # docker waits 10 seconds before sending SIGKILL to container
             except Exception as e:
@@ -144,7 +147,7 @@ class NarrativeTestContainer(unittest.TestCase):
                 logging.info("Removing container {}".format(containerId))
                 cls.cli.remove_container(containerId)
                 cls.container_list.remove(containerId)
-        super(NarrativeTestContainer, cls).tearDownClass()
+        super(ContainerTestContainer, cls).tearDownClass()
 
 
 def MakeTestFunction(task_name, task, containerId):
@@ -164,39 +167,42 @@ def MakeTestFunction(task_name, task, containerId):
         if exit_code == 137:
             self.fail('Task was killed')
             # TODO Perhaps include how long the container ran before being killed?
-        self.assertEquals(exit_code, task.get('tests', {}).get('exit_code', 0))
+        # self.assertEquals(exit_code, task.get('tests', {}).get('exit_code', 0))
         status = True
         output = self.cli.logs(containerId)
         for test_type, param in task.get('tests', {}).iteritems():
             if test_type == "str_match":
                 status = status and (output.find(param) >= 0)
+            elif test_type == "regex_match":
+                status = status and (re.match(param, output) is not None)
+            elif test_type == "exit_code":
+                status = status and (exit_code == param)
+            else:
+                raise UnknownTestCondition("Unrecognized test : " + test_type)
         self.assertTrue(status, msg="container output: {}".format(output[0:80]))
         self.cli.remove_container(containerId)
         self.container_list.remove(containerId)
-
     return TestTaskOutput
 
 
 def ConName(task_name):
     """
     We use these container names in 2 different places, make sure we generate them
-    the same way
+    the same way. Necessary so that multiple runs don't accidentally try containers
+    with the same name.
     """
     return "{0}_{1}".format(cname_prefix, task_name)
 
 
 def GenerateTestTasks(conf):
-    """
-    Generate the Unittest test tasks in a batch
-    """
+    """ Generate the Unittest test tasks in a batch """
     for task_name, task in conf['tasks'].iteritems():
             test_func = MakeTestFunction(task_name, task, ConName(task_name))
-            setattr(NarrativeTestContainer, 'test_{0}'.format(task_name), test_func)
+            setattr(ContainerTestContainer, 'test_{0}'.format(task_name), test_func)
 
 
 def ValidateTaskNames(conf):
-    # verify that all task_names are alphanumeric+_ and can
-    # be used in a function name
+    """ verify that all task_names are alphanumeric+_ and can be used in a function name """
     legit_name = re.compile('^\w+$')
     for task_name in conf['tasks'].keys():
         if not legit_name.match(task_name):
@@ -214,10 +220,9 @@ def main():
         numeric_level = getattr(logging, conf['loglevel'].upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError('Invalid log level: %s' % conf['loglevel'])
-        logging.basicConfig(level=numeric_level)
-    # Generate test methods for all the tasks
+        logging.basicConfig(stream=sys.stderr, level=numeric_level)
+        print "Loglevel = "+conf['loglevel'].upper()+" numeric_level = "+str(numeric_level)
     GenerateTestTasks(conf)
-
     if 'xml_output' in conf:
         unittest.main(testRunner=xmlrunner.XMLTestRunner(output=conf['xml_output']))
     else:
