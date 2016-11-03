@@ -1,5 +1,4 @@
 max_running_tasks : 6
-xml_output: xml_reports
 # loglevel: info
 delete_failed: True
 timeout: 60
