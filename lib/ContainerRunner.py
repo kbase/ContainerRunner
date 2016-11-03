@@ -21,6 +21,7 @@ import unittest
 import re
 import logging
 import xmlrunner
+import argparse
 from docker import client
 
 
@@ -36,7 +37,7 @@ conf = {'docker_url': 'unix://var/run/docker.sock',
         }
 
 # Default yaml config file path
-config_path = os.environ.get("CONTAINER_RUNNER_CONFIG", "container_runner.yaml")
+config_file = os.environ.get("CONTAINER_RUNNER_CONFIG", "container_runner.yaml")
 
 # prefix to be used on containernames to avoid name collision
 cname_prefix = time.strftime("%m%d_%H%M%S")
@@ -65,7 +66,7 @@ def TimeoutHandler(signum, frame):
     raise TimeoutException()
 
 
-class ContainerTestContainer(unittest.TestCase):
+class ContainerTest(unittest.TestCase):
     """
     Class that serves as a container for tests generated at runtime from
     YAML description file.
@@ -85,7 +86,7 @@ class ContainerTestContainer(unittest.TestCase):
         checking the output. If timeout is set and killing container on timeout is enabled, then
         kill the containers, otherwise just log the timeout and keep waiting.
         """
-        super(ContainerTestContainer, cls).setUpClass()
+        super(ContainerTest, cls).setUpClass()
         cls.cli = client.Client(base_url=conf['docker_url'])
         task_queue = conf['tasks'].keys()
         running_tasks = []
@@ -147,7 +148,7 @@ class ContainerTestContainer(unittest.TestCase):
                 logging.info("Removing container {}".format(containerId))
                 cls.cli.remove_container(containerId)
                 cls.container_list.remove(containerId)
-        super(ContainerTestContainer, cls).tearDownClass()
+        super(ContainerTest, cls).tearDownClass()
 
 
 def MakeTestFunction(task_name, task, containerId):
@@ -198,7 +199,7 @@ def GenerateTestTasks(conf):
     """ Generate the Unittest test tasks in a batch """
     for task_name, task in conf['tasks'].iteritems():
             test_func = MakeTestFunction(task_name, task, ConName(task_name))
-            setattr(ContainerTestContainer, 'test_{0}'.format(task_name), test_func)
+            setattr(ContainerTest, 'test_{0}'.format(task_name), test_func)
 
 
 def ValidateTaskNames(conf):
@@ -209,24 +210,66 @@ def ValidateTaskNames(conf):
             raise IllegalTaskName('Task names must match [a-zA-Z0-9_]+: "{}"'.format(task_name))
 
 
+def ParseArgs():
+    """ Copied mostly wholesale from unittest source """
+    parser = argparse.ArgumentParser(description='Run docker containers as unit test tasks')
+
+    parser.add_argument('-v', '--verbose', dest='verbosity',
+                        action='store_const', const=2,
+                        help='Verbose output')
+    parser.add_argument('-q', '--quiet', dest='verbosity',
+                        action='store_const', const=0,
+                        help='Quiet output')
+    parser.add_argument('-f', '--failfast', dest='failfast',
+                        action='store_true',
+                        help='Stop on first fail or error')
+    parser.add_argument('-c', '--catch', dest='catchbreak',
+                        action='store_true',
+                        help='Catch ctrl-C and display results so far')
+    parser.add_argument('-b', '--buffer', dest='buffer',
+                        action='store_true',
+                        help='Buffer stdout and stderr during tests')
+    parser.add_argument('-x', '--xml', dest='xml_output',
+                        help='Location for junit compatible XML output files')
+    parser.add_argument('--loglevel', dest='loglevel',
+                        choices=['notset', 'debug', 'info', 'warning', 'error', 'critical'],
+                        help='Symbolic loglevel for python logger loglevel')
+    parser.add_argument('--config_file',
+                        help="YAML config file containing list of tasks to run")
+    parser
+    return(parser.parse_args())
+
+
 def main():
-    with open(config_path, 'r') as f:
+    global config_file
+    args = ParseArgs()
+    if args.config_file is not None:
+        config_file = args.config_file
+    with open(config_file, 'r') as f:
         conf2 = yaml.load(f)
     conf.update(conf2)
     ValidateTaskNames(conf)
 
     # Set the logging loglevel based on the "loglevel" setting in the yaml file
-    if 'loglevel' in conf:
-        numeric_level = getattr(logging, conf['loglevel'].upper(), None)
+    if 'loglevel' in conf or args.loglevel is not None:
+        loglevel = args.loglevel if args.loglevel is not None else conf['loglevel']
+        numeric_level = getattr(logging, loglevel.upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError('Invalid log level: %s' % conf['loglevel'])
-        logging.basicConfig(stream=sys.stderr, level=numeric_level)
-        print "Loglevel = "+conf['loglevel'].upper()+" numeric_level = "+str(numeric_level)
-    GenerateTestTasks(conf)
-    if 'xml_output' in conf:
-        unittest.main(testRunner=xmlrunner.XMLTestRunner(output=conf['xml_output']))
     else:
-        unittest.main()
+        numeric_level = logging.WARNING
+    logging.basicConfig(stream=sys.stderr, level=numeric_level)
+    GenerateTestTasks(conf)
+    # construct params to be passed to unittest.main() from the cmd line
+    main_params = {}
+    main_params['verbosity'] = args.verbosity
+    main_params['failfast'] = args.failfast
+    main_params['catchbreak'] = args.catchbreak
+    main_params['buffer'] = args.buffer
+    main_params['argv'] = [sys.argv[0]]
+    if args.xml_output is not None:
+        main_params['testRunner'] = xmlrunner.XMLTestRunner(output=args.xml_output)
+    unittest.main(**main_params)
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
