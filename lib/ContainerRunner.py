@@ -87,7 +87,7 @@ class ContainerTest(unittest.TestCase):
         kill the containers, otherwise just log the timeout and keep waiting.
         """
         super(ContainerTest, cls).setUpClass()
-        cls.cli = client.Client(base_url=conf['docker_url'])
+        cls.cli = client.Client(base_url=conf['docker_url'], version='auto')
         task_queue = conf['tasks'].keys()
         running_tasks = []
         while len(task_queue) > 0 or len(running_tasks) > 0:
