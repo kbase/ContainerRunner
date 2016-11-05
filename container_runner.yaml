@@ -1,5 +1,4 @@
 max_running_tasks : 6
-# loglevel: info
 delete_failed: True
 timeout: 60
 kill_on_timeout: True
@@ -29,7 +28,7 @@ tasks :
         entrypoint : /bin/echo
         tests:
             regex_match: "^Will.*Dave"
-#not_tasks:
+not_tasks:
     timeout:
         command: "90"
         image : ubuntu:latest
