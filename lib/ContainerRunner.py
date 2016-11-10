@@ -256,8 +256,9 @@ def main():
     logging.basicConfig(stream=sys.stderr, level=numeric_level)
     GenerateTestTasks(conf)
     if 'xml_output' in conf:
-        unittest.testRunner = xmlrunner.XMLTestRunner(output=conf['xml_output'])
-    unittest.main()
+        unittest.main(testRunner = xmlrunner.XMLTestRunner(output=conf['xml_output']))
+    else:
+        unittest.main()
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
