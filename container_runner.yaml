@@ -1,5 +1,4 @@
 max_running_tasks : 6
-# loglevel: info
 delete_failed: True
 timeout: 60
 kill_on_timeout: True
