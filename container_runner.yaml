@@ -29,7 +29,7 @@ tasks :
         entrypoint : /bin/echo
         tests:
             regex_match: "^Will.*Dave"
-#not_tasks:
+not_tasks:
     timeout:
         command: "90"
         image : ubuntu:latest
