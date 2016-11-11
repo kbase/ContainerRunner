@@ -129,6 +129,8 @@ class ContainerTest(unittest.TestCase):
                         logging.warning("Stopping container due to timeout: {}".format(containerId))
                         cls.cli.stop(containerId)
                     time.sleep(10)  # docker waits 10 seconds before sending SIGKILL to container
+                else:
+                        logging.info("kill_on_timeout not enabled - container not killed")
             except Exception as e:
                 raise e
             for cid in finished:
