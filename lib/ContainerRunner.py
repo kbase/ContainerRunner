@@ -88,11 +88,11 @@ class ContainerTest(unittest.TestCase):
         """
         super(ContainerTest, cls).setUpClass()
         cls.cli = client.Client(base_url=conf['docker_url'], version='auto')
-        task_queue = conf['tasks'].keys()
+        task_queue = sorted(conf['tasks'].keys())
         running_tasks = []
         while len(task_queue) > 0 or len(running_tasks) > 0:
             while len(running_tasks) < conf['max_running_tasks'] and len(task_queue) > 0:
-                task_name = task_queue.pop()
+                task_name = task_queue.pop(0)
                 task = conf['tasks'][task_name]
                 image = task.get('image', conf['image'])
                 entrypoint = task.get('entrypoint', conf['entrypoint'])
@@ -238,23 +238,18 @@ def ParseArgs():
                         help='Symbolic loglevel for python logger loglevel')
     parser.add_argument('--config_file',
                         help="YAML config file containing list of tasks to run")
-    parser
     return(parser.parse_args())
 
 
 def main():
-    global config_file
-    args = ParseArgs()
-    if args.config_file is not None:
-        config_file = args.config_file
     with open(config_file, 'r') as f:
         conf2 = yaml.load(f)
     conf.update(conf2)
     ValidateTaskNames(conf)
 
     # Set the logging loglevel based on the "loglevel" setting in the yaml file
-    if 'loglevel' in conf or args.loglevel is not None:
-        loglevel = args.loglevel if args.loglevel is not None else conf['loglevel']
+    if 'loglevel' in conf:
+        loglevel = conf['loglevel']
         numeric_level = getattr(logging, loglevel.upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError('Invalid log level: %s' % conf['loglevel'])
@@ -262,16 +257,10 @@ def main():
         numeric_level = logging.WARNING
     logging.basicConfig(stream=sys.stderr, level=numeric_level)
     GenerateTestTasks(conf)
-    # construct params to be passed to unittest.main() from the cmd line
-    main_params = {}
-    main_params['verbosity'] = args.verbosity
-    main_params['failfast'] = args.failfast
-    main_params['catchbreak'] = args.catchbreak
-    main_params['buffer'] = args.buffer
-    main_params['argv'] = [sys.argv[0]]
-    if args.xml_output is not None:
-        main_params['testRunner'] = xmlrunner.XMLTestRunner(output=args.xml_output)
-    unittest.main(**main_params)
+    if 'xml_output' in conf:
+        unittest.main(testRunner = xmlrunner.XMLTestRunner(output=conf['xml_output']))
+    else:
+        unittest.main()
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
