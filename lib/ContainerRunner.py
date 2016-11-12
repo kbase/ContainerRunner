@@ -96,9 +96,11 @@ class ContainerTest(unittest.TestCase):
                 task = conf['tasks'][task_name]
                 image = task.get('image', conf['image'])
                 entrypoint = task.get('entrypoint', conf['entrypoint'])
-                env = {'KB_AUTH_TOKEN': task.get('KB_AUTH_TOKEN', conf.get('KB_AUTH_TOKEN')),
-                       'KB_WORKSPACE_ID': task.get('KB_WORKSPACE_ID', conf.get('KB_WORKSPACE_ID')),
-                       'ENVIRON': task.get('run_env', conf.get('run_env'))}
+                # if there is an 'env' dict in the task config, use that as a base and
+                # update it against explicitly specific environment settings
+                env = task.get('env', {})
+                env.update({'KB_AUTH_TOKEN': task.get('KB_AUTH_TOKEN', conf.get('KB_AUTH_TOKEN')),
+                            'ENVIRON': task.get('run_env', conf.get('run_env'))})
                 logging.debug("Creating image:{0} entrypoint:{1} command: '{2}' env: {3}".format(
                                 image, entrypoint, task['command'], env))
                 con_name = ConName(task_name)
@@ -172,7 +174,7 @@ def MakeTestFunction(task_name, task, containerId):
             # TODO Perhaps include how long the container ran before being killed?
         # self.assertEquals(exit_code, task.get('tests', {}).get('exit_code', 0))
         status = True
-        output = self.cli.logs(containerId)
+        output = self.cli.logs(containerId).strip()
         for test_type, param in task.get('tests', {}).iteritems():
             if test_type == "str_match":
                 status = status and (output.find(param) >= 0)
@@ -182,7 +184,7 @@ def MakeTestFunction(task_name, task, containerId):
                 status = status and (exit_code == param)
             else:
                 raise UnknownTestCondition("Unrecognized test : " + test_type)
-        self.assertTrue(status, msg="container output: {}".format(output[0:80]))
+        self.assertTrue(status, msg="container output: {}".format(output.splitlines()[-1]))
         self.cli.remove_container(containerId)
         self.container_list.remove(containerId)
     return TestTaskOutput
@@ -258,7 +260,7 @@ def main():
     logging.basicConfig(stream=sys.stderr, level=numeric_level)
     GenerateTestTasks(conf)
     if 'xml_output' in conf:
-        unittest.main(testRunner = xmlrunner.XMLTestRunner(output=conf['xml_output']))
+        unittest.main(testRunner=xmlrunner.XMLTestRunner(output=conf['xml_output']))
     else:
         unittest.main()
 
