@@ -143,3 +143,8 @@ What command to be passed in to the docker run command
 
 A dictionary that is used to set arbitrary environment variables in the running container. Note that this
 setting has the highest precedence and will overwrite things such as run_env and KB_AUTH_TOKEN
+
+### tests
+
+Declares what tests should be run against the output from the container.
+
