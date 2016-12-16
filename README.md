@@ -133,7 +133,7 @@ The entrypoint passed into the docker run command. Defaults to "headless-narrati
 
 What docker image to run. Defaults to kbase/narrative:latest
 
-## These directives can only be declared with a specific task scope
+## These directives can only be declared within a specific task scope
 
 ### command
 
