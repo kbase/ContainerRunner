@@ -1,7 +1,7 @@
 max_running_tasks : 6  # max number of docker containers running simultaneously 
 delete_failed: True    # delete containers that fail assertion. Defaults to false
 loglevel: info         # log level to be set in python logging framework
-#xml_output: xml_output # what directory to write XML output to, if not set don't write XML
+xml_output: xml_output # what directory to write XML output to, if not set don't write XML
 timeout: 60   # How long to wait for containers to complete before timing out
 kill_on_timeout: True  # Do we stop the containers on timeout, or merely warn?
 tasks :       # The dictionary of test tasks. Describes all the images to run
@@ -11,12 +11,6 @@ tasks :       # The dictionary of test tasks. Describes all the images to run
         entrypoint : /bin/echo  # What is the entrypoint? In this case, we use /bin/echo
         tests:                  # List of tests to run, multiple entries are AND together
             str_match: hello    # Perform a basic string match for "hello" in the container output
-    goodbye:
-        command: "goodbye cruel world"
-        image : ubuntu:latest
-        entrypoint : /bin/echo
-        tests:
-            str_match: "goodbye"
     goodbye2:
         command: /etc/passwd
         image : ubuntu:latest
@@ -30,7 +24,6 @@ tasks :       # The dictionary of test tasks. Describes all the images to run
         entrypoint : /bin/echo
         tests:
             regex_match: "^Will.*Dave"  # Use Python regex for match
-not:   # By putting this other config under the "not" attribute, they are ignored. Comment out line to include
     timeout:
         command: "90"
         image : ubuntu:latest

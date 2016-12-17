@@ -18,46 +18,8 @@ the CONTAINER_RUNNER_CONFIG shell variable, and the contents of the configuratio
 # The Container Runner Config file
 
 This is a YAML file that describes the run environment for the containers, the images to be used
-for the containers, and the tests to be run on the output of the containers for the test assertion.
-
-Here is an excerpt of the sample YAML file from this repo with annotations:
-~~~
-max_running_tasks : 6  # max number of docker containers running simultaneously 
-delete_failed: True    # delete containers that fail assertion. Defaults to false
-loglevel: info         # log level to be set in python logging framework
-#xml_output: xml_output # what directory to write XML output to, if not set don't write XML
-timeout: 60   # How long to wait for containers to complete before timing out
-kill_on_timeout: True  # Do we stop the containers on timeout, or merely warn?
-tasks :       # The dictionary of test tasks. Describes all the images to run
-    hello_world: # Name of the task, will be displayed as part of the logs, should be informative
-        command: "hello world"  # What is the 'command' that is passed to the entrypoint
-        image : ubuntu:latest   # What docker image to run
-        entrypoint : /bin/echo  # What is the entrypoint? In this case, we use /bin/echo
-        tests:                  # List of tests to run, multiple entries are AND together
-            str_match: hello    # Perform a basic string match for "hello" in the container output
-    goodbye2:
-        command: /etc/passwd
-        image : ubuntu:latest
-        entrypoint : /usr/bin/tail
-        tests: # This set of tests requires both exit code 127 AND "godbye" string
-            str_match: "godbye"
-            exit_code: 127
-    stop_dave:
-        command: "Will you stop, Dave?"
-        image : ubuntu:latest
-        entrypoint : /bin/echo
-        tests:
-            regex_match: "^Will.*Dave"  # Use Python regex for match
-    timeout:
-        command: "90"
-        image : ubuntu:latest
-        env:
-            KB_CELL_TIMEOUT: 10  # The KB_CELL_TIMEOUT env variable controls individual cell timeout in narrative
-            SSH_AUTH_PORT: /tmp/blah # An example of setting the environment var SSH_AUTH_PORT - to a silly value
-        entrypoint : /bin/sleep
-~~~
-
-Here are the directives that can be includes in the YAML file:
+for the containers, and the tests to be run on the output of the containers for the test assertion. This
+section lists the directives available. Any directives not recognized are simply ignored.
 
 ## These directives should be in the outermost scope of the YAML file
 
@@ -104,6 +66,11 @@ terminates.
 This script uses the standard python logger, and [loglevel](https://docs.python.org/2/library/logging.html#levels)
 is passed directly to the python logger to determine log verbosity.
 
+### xml_output
+
+Enable XML reporting via XMLRunner and write the output to the directory specified in this directive.
+
+
 ### tasks
 
 This attribute should contain a dict of which tasks to run. The attributes one level below "tasks" are
@@ -148,3 +115,126 @@ setting has the highest precedence and will overwrite things such as run_env and
 
 Declares what tests should be run against the output from the container.
 
+#### str_match
+
+This is a simple string match on the container out, if the string matches the test assertion passes. If not, then it is a fail.
+
+#### exit_code
+
+This checks for a match of exit code of final state of the container, via the docker
+["State"]["ExitCode"] value that is returns from a [docker inspect](https://docs.docker.com/engine/reference/api/docker_remote_api_v1.19/#/inspect-a-container).
+
+Note that the ContainerRunner script automatically checks if a container has an exit code of 137, indicating
+that it was killed. This is always flagged as a failure.
+
+#### regex_match
+
+This is a python regex expression that is matched against the container output.
+
+Here is an excerpt of the sample YAML file from this repo with comments. It runs 4 different
+images, with a loglevel of "info"
+~~~
+max_running_tasks : 6  # max number of docker containers running simultaneously 
+delete_failed: True    # delete containers that fail assertion. Defaults to false
+loglevel: info         # log level to be set in python logging framework
+xml_output: xml_output # what directory to write XML output to, if not set don't write XML
+timeout: 60   # How long to wait for containers to complete before timing out
+kill_on_timeout: True  # Do we stop the containers on timeout, or merely warn?
+tasks :       # The dictionary of test tasks. Describes all the images to run
+    hello_world: # Name of the task, will be displayed as part of the logs, should be informative
+        command: "hello world"  # What is the 'command' that is passed to the entrypoint
+        image : ubuntu:latest   # What docker image to run
+        entrypoint : /bin/echo  # What is the entrypoint? In this case, we use /bin/echo
+        tests:                  # List of tests to run, multiple entries are AND together
+            str_match: hello    # Perform a basic string match for "hello" in the container output
+    goodbye2:
+        command: /etc/passwd
+        image : ubuntu:latest
+        entrypoint : /usr/bin/tail
+        tests: # This set of tests requires both exit code 127 AND "godbye" string
+            str_match: "godbye"
+            exit_code: 127
+    stop_dave:
+        command: "Will you stop, Dave?"
+        image : ubuntu:latest
+        entrypoint : /bin/echo
+        tests:
+            regex_match: "^Will.*Dave"  # Use Python regex for match
+    timeout:
+        command: "90"
+        image : ubuntu:latest
+        env:
+            KB_CELL_TIMEOUT: 10  # The KB_CELL_TIMEOUT env variable controls individual cell timeout in narrative
+            SSH_AUTH_PORT: /tmp/blah # An example of setting the environment var SSH_AUTH_PORT - to a silly value
+        entrypoint : /bin/sleep
+~~~
+
+Note that the KB_CELL_TIMEOUT directive will be passed into the container, but because the container isn't
+running a KBase narrative, it will have no effect. It is only in place to demonstrate how to set it.
+
+Here is a sample run of the config, as expected there are 2 test failures, the timeout and goodbye2 tests both fail.
+ 
+~~~
+python lib/ContainerRunner.py 
+
+Running tests...
+----------------------------------------------------------------------
+INFO:root:Started container 1216_161934_goodbye2
+INFO:root:Started container 1216_161934_hello_world
+INFO:root:Started container 1216_161934_stop_dave
+INFO:root:Started container 1216_161934_timeout
+INFO:root:Container 1216_161934_goodbye2 exited
+INFO:root:Container 1216_161934_hello_world exited
+INFO:root:Container 1216_161934_stop_dave exited
+INFO:root:Timeout triggered while waiting for containers: 1216_161934_timeout
+WARNING:root:Stopping container due to timeout: 1216_161934_timeout
+INFO:root:Container 1216_161934_timeout exited
+F..FINFO:root:Removing container 1216_161934_goodbye2
+
+======================================================================
+ERROR [0.012s]: test_goodbye2 (__main__.ContainerTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "lib/ContainerRunner.py", line 186, in TestTaskOutput
+    self.assertTrue(status, msg="container output: {}".format(output.splitlines()[-1]))
+AssertionError: False is not true : container output: _apt:x:104:65534::/nonexistent:/bin/false
+
+======================================================================
+ERROR [0.004s]: test_timeout (__main__.ContainerTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "lib/ContainerRunner.py", line 172, in TestTaskOutput
+    self.fail('Task was killed')
+AssertionError: Task was killed
+
+----------------------------------------------------------------------
+Ran 4 tests in 86.732s
+
+FAILED (errors=2)
+
+Generating XML reports...
+~~~
+
+Note that the standard command line switches for a python UnitTest script are also honored, however any arguments that
+run a test suite in a directory will interfere with the tests in the YAML file.
+
+~~~
+python lib/ContainerRunner.py --help
+Usage: ContainerRunner.py [options] [test] [...]
+
+Options:
+  -h, --help       Show this message
+  -v, --verbose    Verbose output
+  -q, --quiet      Minimal output
+  -f, --failfast   Stop on first failure
+  -c, --catch      Catch control-C and display results
+  -b, --buffer     Buffer stdout and stderr during test runs
+
+Examples:
+  ContainerRunner.py                               - run default set of tests
+  ContainerRunner.py MyTestSuite                   - run suite 'MyTestSuite'
+  ContainerRunner.py MyTestCase.testSomething      - run MyTestCase.testSomething
+  ContainerRunner.py MyTestCase                    - run all 'test*' test methods
+                                               in MyTestCase
+
+~~~
