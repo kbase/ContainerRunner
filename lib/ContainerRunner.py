@@ -21,7 +21,6 @@ import unittest
 import re
 import logging
 import xmlrunner
-import argparse
 from docker import client
 
 
@@ -104,7 +103,7 @@ class ContainerTest(unittest.TestCase):
                 logging.debug("Creating image:{0} entrypoint:{1} command: '{2}' env: {3}".format(
                                 image, entrypoint, task['command'], env))
                 con_name = ConName(task_name)
-                cls.cli.create_container(image=image, command=task['command'],
+                cls.cli.create_container(image=image, command=str(task['command']),
                                          entrypoint=entrypoint, environment=env, name=con_name)
                 cls.container_list.append(con_name)
                 cls.cli.start(con_name)
@@ -212,35 +211,6 @@ def ValidateTaskNames(conf):
     for task_name in conf['tasks'].keys():
         if not legit_name.match(task_name):
             raise IllegalTaskName('Task names must match [a-zA-Z0-9_]+: "{}"'.format(task_name))
-
-
-def ParseArgs():
-    """ Copied mostly wholesale from unittest source """
-    parser = argparse.ArgumentParser(description='Run docker containers as unit test tasks')
-
-    parser.add_argument('-v', '--verbose', dest='verbosity',
-                        action='store_const', const=2,
-                        help='Verbose output')
-    parser.add_argument('-q', '--quiet', dest='verbosity',
-                        action='store_const', const=0,
-                        help='Quiet output')
-    parser.add_argument('-f', '--failfast', dest='failfast',
-                        action='store_true',
-                        help='Stop on first fail or error')
-    parser.add_argument('-c', '--catch', dest='catchbreak',
-                        action='store_true',
-                        help='Catch ctrl-C and display results so far')
-    parser.add_argument('-b', '--buffer', dest='buffer',
-                        action='store_true',
-                        help='Buffer stdout and stderr during tests')
-    parser.add_argument('-x', '--xml', dest='xml_output',
-                        help='Location for junit compatible XML output files')
-    parser.add_argument('--loglevel', dest='loglevel',
-                        choices=['notset', 'debug', 'info', 'warning', 'error', 'critical'],
-                        help='Symbolic loglevel for python logger loglevel')
-    parser.add_argument('--config_file',
-                        help="YAML config file containing list of tasks to run")
-    return(parser.parse_args())
 
 
 def main():
