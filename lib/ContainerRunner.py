@@ -178,7 +178,8 @@ def MakeTestFunction(task_name, task, containerId):
             if test_type == "str_match":
                 status = status and (output.find(param) >= 0)
             elif test_type == "regex_match":
-                status = status and (re.match(param, output) is not None)
+                regx = re.compile(param, re.DOTALL | re.MULTILINE)
+                status = status and (regx.search(output) is not None)
             elif test_type == "exit_code":
                 status = status and (exit_code == param)
             else:
